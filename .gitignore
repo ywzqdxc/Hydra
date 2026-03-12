@@ -1,0 +1,30 @@
+# --- IDE & System ---
+.idea/
+*.iml
+.vscode/
+.DS_Store
+*.log
+
+# --- Frontend (HydraForesight) ---
+HydraForesight/node_modules/
+HydraForesight/package-lock.json
+HydraForesight/pnpm-lock.yaml
+HydraForesight/.next/
+HydraForesight/out/
+HydraForesight/build/
+HydraForesight/.vercel
+HydraForesight/*.tsbuildinfo
+HydraForesight/next-env.d.ts
+
+# --- Backend (HydraVision) ---
+HydraVision/target/
+HydraVision/*.class
+HydraVision/.mvn/
+HydraVision/bin/
+HydraVision/.settings/
+HydraVision/.classpath
+HydraVision/.project
+
+# --- Env & Secrets ---
+.env*
+HydraVision/src/main/resources/application-local.properties
