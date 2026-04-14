@@ -15,6 +15,28 @@ import { useRouter } from "next/navigation"
 import { login, register, isAuthenticated } from "@/lib/api/auth"
 import { useToast } from "@/hooks/use-toast"
 
+function isLocalPreview() {
+  if (typeof window === "undefined") return false
+  return window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1"
+}
+
+function enableLocalPreviewSession(username: string) {
+  localStorage.setItem("hydra_token", "local-preview-token")
+  localStorage.setItem("hydra_refresh_token", "local-preview-refresh-token")
+  localStorage.setItem(
+    "hydra_user_info",
+    JSON.stringify({
+      id: 1,
+      userId: "local-preview-user",
+      username,
+      realName: "本地预览用户",
+      status: 1,
+    })
+  )
+  localStorage.setItem("isLoggedIn", "true")
+  localStorage.setItem("username", username)
+}
+
 export default function LoginPage() {
   const router = useRouter()
   const { toast } = useToast()
@@ -45,6 +67,17 @@ export default function LoginPage() {
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault()
     setIsLoading(true)
+
+    if (isLocalPreview() && loginForm.username === "admin" && loginForm.password === "110611") {
+      enableLocalPreviewSession(loginForm.username)
+      toast({
+        title: "本地预览登录成功",
+        description: "已跳过本地缺失的后端认证，直接进入页面查看效果。",
+      })
+      router.push("/")
+      setIsLoading(false)
+      return
+    }
 
     try {
       const response = await login({

@@ -4,6 +4,7 @@ import type { Metadata } from "next"
 import localFont from "next/font/local"
 import { ThemeProvider } from "@/components/theme-provider"
 import { DarkModeFixes } from "@/components/dark-mode-fixes"
+import { Toaster } from "@/components/ui/toaster"
 
 const inter = localFont({
   src: [
@@ -34,6 +35,7 @@ export default function RootLayout({
         <ThemeProvider attribute="class" defaultTheme="system" enableSystem disableTransitionOnChange>
           <DarkModeFixes />
           {children}
+          <Toaster />
         </ThemeProvider>
       </body>
     </html>

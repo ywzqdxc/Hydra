@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect } from "react"
+import { useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
 import {
   CloudRain,
@@ -29,6 +29,11 @@ import { Progress } from "@/components/ui/progress"
 import AIAssistantButton from "@/components/ai-assistant-button"
 import Chart from "@/components/Chart"
 import { isAuthenticated } from "@/lib/api/auth"
+
+function isLocalPreview() {
+  if (typeof window === "undefined") return false
+  return window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1"
+}
 
 // 使用 Input 1 (新版) 的图表配置数据
 const options = {
@@ -73,17 +78,19 @@ const options = {
 
 export default function HomePage() {
   const router = useRouter()
+  const [authState, setAuthState] = useState<"checking" | "authenticated" | "unauthenticated">("checking")
 
   useEffect(() => {
     // 检查用户是否已登录 (保留原逻辑)
-    if (!isAuthenticated()) {
+    const authenticated = isLocalPreview() || isAuthenticated()
+    setAuthState(authenticated ? "authenticated" : "unauthenticated")
+    if (!authenticated) {
       router.push("/login")
-      return
     }
   }, [router])
 
   // 如果未登录，显示加载状态 (保留原逻辑)
-  if (typeof window !== "undefined" && !isAuthenticated()) {
+  if (authState !== "authenticated") {
     return (
       <div className="min-h-screen flex items-center justify-center">
         <div className="text-center">

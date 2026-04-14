@@ -3,6 +3,20 @@
  */
 import { apiClient, type ApiResponse, type PageResult } from "./request"
 
+function isLocalPreview() {
+  if (typeof window === "undefined") return false
+  return window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1"
+}
+
+function mockResponse<T>(data: T, message = "success"): ApiResponse<T> {
+  return {
+    code: 200,
+    message,
+    data,
+    timestamp: Date.now(),
+  }
+}
+
 // 预警记录接口
 export interface AlertRecord {
   id: number
@@ -171,6 +185,56 @@ export async function getActiveAlerts(): Promise<ApiResponse<AlertRecord[]>> {
  * 获取最新预警列表
  */
 export async function getLatestAlerts(limit = 10): Promise<ApiResponse<AlertRecord[]>> {
+  if (isLocalPreview()) {
+    const now = Date.now()
+    const mockAlerts: AlertRecord[] = [
+      {
+        id: 1,
+        alertId: "LOCAL-ALT-001",
+        alertType: 1,
+        alertLevel: 4,
+        areaName: "本地预览区域",
+        title: "本地预览暴雨红色预警",
+        content: "当前页面处于本地预览模式，最近预警列表使用模拟数据展示，避免开发环境请求失败影响界面调试。",
+        triggerTime: new Date(now - 10 * 60 * 1000).toISOString(),
+        publishTime: new Date(now - 8 * 60 * 1000).toISOString(),
+        status: 1,
+        viewCount: 12,
+        createTime: new Date(now - 10 * 60 * 1000).toISOString(),
+      },
+      {
+        id: 2,
+        alertId: "LOCAL-ALT-002",
+        alertType: 3,
+        alertLevel: 2,
+        areaName: "本地预览区域",
+        title: "本地预览内涝黄色预警",
+        content: "系统已检测到低洼点位短时积水风险，请值班人员关注排水与交通引导情况。",
+        triggerTime: new Date(now - 35 * 60 * 1000).toISOString(),
+        publishTime: new Date(now - 30 * 60 * 1000).toISOString(),
+        status: 1,
+        viewCount: 8,
+        createTime: new Date(now - 35 * 60 * 1000).toISOString(),
+      },
+      {
+        id: 3,
+        alertId: "LOCAL-ALT-003",
+        alertType: 4,
+        alertLevel: 3,
+        areaName: "本地预览区域",
+        title: "本地预览雷电橙色预警",
+        content: "未来两小时可能出现强对流天气，请提前检查户外设备、电力与通信保障状态。",
+        triggerTime: new Date(now - 65 * 60 * 1000).toISOString(),
+        publishTime: new Date(now - 60 * 60 * 1000).toISOString(),
+        status: 1,
+        viewCount: 5,
+        createTime: new Date(now - 65 * 60 * 1000).toISOString(),
+      },
+    ]
+
+    return mockResponse(mockAlerts.slice(0, limit))
+  }
+
   return apiClient.get<AlertRecord[]>("/alert/latest", { limit })
 }
 
@@ -185,6 +249,24 @@ export async function pageAlerts(params: AlertQueryParams): Promise<ApiResponse<
  * 获取预警详情
  */
 export async function getAlertDetail(id: number): Promise<ApiResponse<AlertRecord>> {
+  if (isLocalPreview()) {
+    return mockResponse<AlertRecord>({
+      id,
+      alertId: "LOCAL-ALERT-001",
+      alertType: 1,
+      alertLevel: 4,
+      areaName: "本地预览区域",
+      title: "本地预览暴雨红色预警",
+      content: "当前页面为本地预览数据，用于展示首页和 AI 助手改动效果。",
+      triggerTime: new Date().toISOString(),
+      publishTime: new Date().toISOString(),
+      expectedEndTime: new Date(Date.now() + 2 * 60 * 60 * 1000).toISOString(),
+      status: 1,
+      publisherName: "本地预览",
+      viewCount: 1,
+      createTime: new Date().toISOString(),
+    })
+  }
   return apiClient.get<AlertRecord>(`/alert/${id}`)
 }
 
@@ -265,6 +347,22 @@ export async function toggleAlertRuleStatus(id: number, status: number): Promise
  * 获取首页横幅通知
  */
 export async function getBannerNotification(): Promise<ApiResponse<AlertNotification | null>> {
+  if (isLocalPreview()) {
+    return mockResponse<AlertNotification | null>({
+      id: 1,
+      alertRecordId: 1,
+      alertTitle: "本地预览暴雨红色预警",
+      alertLevel: 4,
+      alertLevelName: "红色",
+      alertType: 1,
+      alertTypeName: "暴雨预警",
+      areaName: "本地预览区域",
+      notifyChannel: 1,
+      notifyContent: "当前为本地预览模式，首页预警横幅使用模拟数据展示。",
+      sendStatus: 1,
+      createTime: new Date().toISOString(),
+    })
+  }
   return apiClient.get<AlertNotification | null>("/alert/notification/banner")
 }
 
@@ -329,6 +427,24 @@ export async function markNotificationAsRead(id: number): Promise<ApiResponse<vo
  * 获取预警的所有响应记录
  */
 export async function getAlertResponses(alertRecordId: number): Promise<ApiResponse<AlertResponse[]>> {
+  if (isLocalPreview()) {
+    return mockResponse<AlertResponse[]>([
+      {
+        id: 1,
+        alertRecordId,
+        responseType: 1,
+        responseTypeName: "确认收到",
+        responseContent: "本地预览模式下的示例响应记录。",
+        responderId: 1,
+        responderName: "预览用户",
+        responderDept: "应急值守组",
+        responseTime: new Date().toISOString(),
+        attachmentUrls: "[]",
+        attachments: [],
+        createTime: new Date().toISOString(),
+      },
+    ])
+  }
   return apiClient.get<AlertResponse[]>(`/alert/response/alert/${alertRecordId}`)
 }
 
@@ -362,6 +478,9 @@ export async function createAlertResponse(data: {
   locationLng?: number
   locationLat?: number
 }): Promise<ApiResponse<number>> {
+  if (isLocalPreview()) {
+    return mockResponse<number>(1, "本地预览提交成功")
+  }
   return apiClient.post<number>("/alert/response", data)
 }
 
@@ -385,6 +504,21 @@ export async function uploadAlertResponseFile(file: File): Promise<
     uploadTime?: string
   }>
 > {
+  if (isLocalPreview()) {
+    return mockResponse({
+      id: `${Date.now()}`,
+      fileName: file.name,
+      name: file.name,
+      filePath: `/local-preview/${file.name}`,
+      path: `/local-preview/${file.name}`,
+      url: "#",
+      fileSize: file.size,
+      size: file.size,
+      fileType: file.type || "application/octet-stream",
+      type: file.type || "application/octet-stream",
+      uploadTime: new Date().toISOString(),
+    })
+  }
   const formData = new FormData()
   formData.append("file", file)
   return apiClient.upload("/file/upload/alert-response", formData)

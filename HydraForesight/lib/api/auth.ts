@@ -40,6 +40,42 @@ export interface LoginResponse {
   user: UserInfo
 }
 
+function isLocalPreview() {
+  if (typeof window === "undefined") return false
+  return window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1"
+}
+
+function createLocalPreviewLoginResponse(username: string): ApiResponse<LoginResponse> {
+  const user: UserInfo = {
+    id: 1,
+    userId: "local-preview-user",
+    username,
+    realName: "本地预览用户",
+    status: 1,
+  }
+
+  const data: LoginResponse = {
+    accessToken: "local-preview-token",
+    refreshToken: "local-preview-refresh-token",
+    tokenType: "Bearer",
+    expiresIn: 86400,
+    user,
+  }
+
+  localStorage.setItem(TOKEN_KEY, data.accessToken)
+  localStorage.setItem(REFRESH_TOKEN_KEY, data.refreshToken)
+  localStorage.setItem(USER_INFO_KEY, JSON.stringify(data.user))
+  localStorage.setItem("isLoggedIn", "true")
+  localStorage.setItem("username", data.user.username)
+
+  return {
+    code: 200,
+    message: "本地预览登录成功",
+    data,
+    timestamp: Date.now(),
+  }
+}
+
 /**
  * 用户登录
  */

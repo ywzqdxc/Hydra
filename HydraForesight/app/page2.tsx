@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect } from "react"
+import { useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
 import {
   CloudRain,
@@ -29,23 +29,26 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Progress } from "@/components/ui/progress"
 import AIAssistantButton from "@/components/ai-assistant-button"
 
+function isLocalPreview() {
+  if (typeof window === "undefined") return false
+  return window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1"
+}
+
 export default function HomePage() {
   const router = useRouter()
+  const [authState, setAuthState] = useState<"checking" | "authenticated" | "unauthenticated">("checking")
 
   useEffect(() => {
     // 检查用户是否已登录
-    const isLoggedIn = localStorage.getItem("isLoggedIn") === "true"
-
+    const isLoggedIn = isLocalPreview() || localStorage.getItem("isLoggedIn") === "true"
+    setAuthState(isLoggedIn ? "authenticated" : "unauthenticated")
     if (!isLoggedIn) {
       router.push("/login")
-      return
     }
   }, [router])
 
   // 如果未登录，显示加载状态
-  const isLoggedIn = typeof window !== "undefined" ? localStorage.getItem("isLoggedIn") === "true" : false
-
-  if (!isLoggedIn) {
+  if (authState !== "authenticated") {
     return (
       <div className="min-h-screen flex items-center justify-center">
         <div className="text-center">
