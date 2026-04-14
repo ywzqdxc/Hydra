@@ -20,26 +20,14 @@ const MAX_DIALOG_WIDTH = 1240
 const MAX_DIALOG_HEIGHT = 920
 const VIEWPORT_PADDING = 24
 
-type DialogSize = {
-  width: number
-  height: number
-}
+type DialogSize = { width: number; height: number }
+type ResizeSession = { startX: number; startY: number; startWidth: number; startHeight: number }
 
-type ResizeSession = {
-  startX: number
-  startY: number
-  startWidth: number
-  startHeight: number
-}
-
+// ... 保留原来的 getDialogBounds 和 clampDialogSize 等逻辑不变 ...
 function getDialogBounds() {
   if (typeof window === "undefined") {
-    return {
-      maxWidth: DEFAULT_DIALOG_WIDTH,
-      maxHeight: DEFAULT_DIALOG_HEIGHT,
-    }
+    return { maxWidth: DEFAULT_DIALOG_WIDTH, maxHeight: DEFAULT_DIALOG_HEIGHT }
   }
-
   return {
     maxWidth: Math.max(MIN_DIALOG_WIDTH, Math.min(MAX_DIALOG_WIDTH, window.innerWidth - VIEWPORT_PADDING * 2)),
     maxHeight: Math.max(MIN_DIALOG_HEIGHT, Math.min(MAX_DIALOG_HEIGHT, window.innerHeight - VIEWPORT_PADDING * 2)),
@@ -54,6 +42,7 @@ function clampDialogSize(size: DialogSize, bounds: { maxWidth: number; maxHeight
 }
 
 export default function AIAssistantButton() {
+  // ... 保留所有的 state 和 useEffect 逻辑不变 ...
   const [isDialogOpen, setIsDialogOpen] = useState(false)
   const [activeLayer, setActiveLayer] = useState<OverlayLayer>("ai")
   const [dialogSize, setDialogSize] = useState<DialogSize>({
@@ -66,32 +55,25 @@ export default function AIAssistantButton() {
   const dialogBoundsRef = useRef(dialogBounds)
   const zIndex = getOverlayZIndex(activeLayer)
 
-  useEffect(() => {
-    dialogBoundsRef.current = dialogBounds
-  }, [dialogBounds])
+  useEffect(() => { dialogBoundsRef.current = dialogBounds }, [dialogBounds])
 
   useEffect(() => {
     const handleOverlayActivation = (event: Event) => {
       const customEvent = event as CustomEvent<OverlayLayer>
       setActiveLayer(customEvent.detail || "ai")
     }
-
     const handlePointerDown = (event: PointerEvent) => {
       const path = typeof event.composedPath === "function" ? event.composedPath() : []
-
       if (isNextDevToolsTarget(event.target, path)) {
         emitOverlayActivation("next-devtools")
         return
       }
-
       if (path.some((candidate) => candidate instanceof HTMLElement && candidate.dataset.hydraAiSurface === "true")) {
         emitOverlayActivation("ai")
       }
     }
-
     window.addEventListener(OVERLAY_ACTIVATION_EVENT, handleOverlayActivation as EventListener)
     document.addEventListener("pointerdown", handlePointerDown, true)
-
     return () => {
       window.removeEventListener(OVERLAY_ACTIVATION_EVENT, handleOverlayActivation as EventListener)
       document.removeEventListener("pointerdown", handlePointerDown, true)
@@ -99,39 +81,26 @@ export default function AIAssistantButton() {
   }, [])
 
   useEffect(() => {
-    if (!isDialogOpen) {
-      return
-    }
-
+    if (!isDialogOpen) return
     const syncBounds = () => {
       const nextBounds = getDialogBounds()
       dialogBoundsRef.current = nextBounds
       setDialogBounds(nextBounds)
       setDialogSize((current) => clampDialogSize(current, nextBounds))
     }
-
     syncBounds()
     window.addEventListener("resize", syncBounds)
-
-    return () => {
-      window.removeEventListener("resize", syncBounds)
-    }
+    return () => window.removeEventListener("resize", syncBounds)
   }, [isDialogOpen])
 
   useEffect(() => {
-    if (!isResizing) {
-      return
-    }
-
+    if (!isResizing) return
     const previousUserSelect = document.body.style.userSelect
     const previousCursor = document.body.style.cursor
 
     const handleMouseMove = (event: MouseEvent) => {
       const session = resizeSessionRef.current
-      if (!session) {
-        return
-      }
-
+      if (!session) return
       setDialogSize(
         clampDialogSize(
           {
@@ -165,7 +134,6 @@ export default function AIAssistantButton() {
     event.preventDefault()
     event.stopPropagation()
     emitOverlayActivation("ai")
-
     resizeSessionRef.current = {
       startX: event.clientX,
       startY: event.clientY,
@@ -199,8 +167,13 @@ export default function AIAssistantButton() {
           onMouseDown={(event) => event.stopPropagation()}
           onClick={(event) => event.stopPropagation()}
         >
+          {/* 
+            【重要修复】： 
+            1. 增加了 flex-col，使弹窗容器成为垂直流向。
+            2. 确保没有多余的 max-w-none 干扰 flex 计算。
+          */}
           <div
-            className="pointer-events-auto relative isolate flex min-w-0 max-w-none overflow-hidden rounded-[28px] border border-slate-200/90 bg-white/98 shadow-[0_32px_96px_rgba(15,23,42,0.45)] ring-1 ring-black/5 dark:border-slate-700/90 dark:bg-slate-950/98"
+            className="pointer-events-auto relative isolate flex flex-col overflow-hidden rounded-[28px] border border-slate-200/90 bg-white/98 shadow-[0_32px_96px_rgba(15,23,42,0.45)] ring-1 ring-black/5 dark:border-slate-700/90 dark:bg-slate-950/98"
             style={{
               width: `${dialogSize.width}px`,
               height: `${dialogSize.height}px`,
@@ -213,9 +186,13 @@ export default function AIAssistantButton() {
             onClick={(event) => event.stopPropagation()}
             data-hydra-ai-surface="true"
           >
+            {/* 
+              【重要修复】： 
+              1. 传入 flex-1 和 min-h-0 给子面板，确保它填满父级但不溢出。
+            */}
             <AIAssistantPanel
               onClose={() => setIsDialogOpen(false)}
-              className="h-full w-full rounded-[inherit] border-0 bg-transparent shadow-none"
+              className="flex-1 min-h-0 w-full rounded-[inherit] border-0 bg-transparent shadow-none"
             />
 
             <button

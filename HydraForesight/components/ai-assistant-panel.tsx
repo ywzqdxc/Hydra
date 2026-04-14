@@ -282,6 +282,8 @@ export default function AIAssistantPanel({ onClose, className }: AIAssistantPane
   const abortControllerRef = useRef<AbortController | null>(null)
   const pendingAttachmentsRef = useRef<PendingAttachment[]>([])
 
+  const [showSuggestions, setShowSuggestions] = useState(true);
+
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" })
   }, [messages])
@@ -483,8 +485,7 @@ export default function AIAssistantPanel({ onClose, className }: AIAssistantPane
   return (
     <Card
       className={cn(
-        "flex h-full w-full flex-col overflow-hidden border-slate-200 bg-white text-slate-950 shadow-2xl dark:border-slate-800 dark:bg-slate-950 dark:text-slate-50",
-        className
+        "flex h-full w-full flex-col overflow-hidden border-slate-200 bg-white text-slate-950 shadow-2xl dark:border-slate-800 dark:bg-slate-950 dark:text-slate-50"
       )}
     >
       <CardHeader className="pb-3">
@@ -510,69 +511,74 @@ export default function AIAssistantPanel({ onClose, className }: AIAssistantPane
         </div>
       </CardHeader>
 
-      <Tabs defaultValue="chat" className="flex min-h-0 w-full flex-1 flex-col">
-        <TabsList className="mx-4 grid w-auto grid-cols-2">
+      <Tabs 
+        defaultValue="chat" 
+        className={cn("flex flex-col w-full h-full min-h-0", className)}
+      >
+        <TabsList className="mx-4 grid w-auto grid-cols-2 shrink-0">
           <TabsTrigger value="chat">对话</TabsTrigger>
           <TabsTrigger value="help">帮助</TabsTrigger>
         </TabsList>
 
-        <TabsContent value="chat" className="mt-0 flex min-h-0 flex-1 flex-col">
-          <CardContent className="min-h-0 flex-1 px-4 pb-0">
-            <ScrollArea className="h-full pr-3">
-              <div className="space-y-4 py-2">
-                {messages.map((message) => (
-                  <div key={message.id} className={`flex ${message.role === "assistant" ? "justify-start" : "justify-end"}`}>
-                    <div
-                      className={`max-w-[88%] rounded-2xl border px-4 py-3 shadow-sm ${
-                        message.role === "assistant"
-                          ? "border-slate-200 bg-white text-slate-900 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-50"
-                          : "border-blue-600 bg-blue-600 text-white"
-                      }`}
-                    >
-                      <div className="mb-2 flex items-center gap-2 text-xs font-medium opacity-80">
-                        {message.role === "assistant" ? <Bot className="h-4 w-4" /> : <User className="h-4 w-4" />}
-                        <span>{message.role === "assistant" ? "智水先知助手" : "您"}</span>
-                      </div>
-
-                      {message.attachments && message.attachments.length > 0 ? (
-                        <div className="mb-3 space-y-2">
-                          {message.attachments.map((attachment) => (
-                            <div
-                              key={attachment.id}
-                              className={`rounded-xl border px-3 py-2 ${
-                                message.role === "assistant"
-                                  ? "border-slate-200 bg-slate-50 dark:border-slate-800 dark:bg-slate-900"
-                                  : "border-blue-300/40 bg-blue-500/30"
-                              }`}
-                            >
-                              <div className="flex items-center gap-2 text-xs">
-                                {attachment.kind === "image" ? <FileImage className="h-4 w-4" /> : <FileText className="h-4 w-4" />}
-                                <span className="truncate">{attachment.name}</span>
-                              </div>
-
-                              {attachment.kind === "image" && attachment.previewUrl ? (
-                                <img src={attachment.previewUrl} alt={attachment.name} className="mt-2 max-h-40 rounded-lg object-cover" />
-                              ) : null}
-                            </div>
-                          ))}
-                        </div>
-                      ) : null}
-
-                      {message.role === "assistant" ? (
-                        <MarkdownContent content={message.content} />
-                      ) : (
-                        <p className="text-sm whitespace-pre-wrap leading-6">{message.content}</p>
-                      )}
-                    </div>
+        <TabsContent value="chat" className="mt-2 flex min-h-0 flex-1 flex-col data-[state=inactive]:hidden">
+      <CardContent className="min-h-0 flex-1 px-4 pb-0">
+        <ScrollArea className="h-full pr-3">
+          <div className="space-y-4 py-2">
+            {messages.map((message) => (
+              <div key={message.id} className={`flex ${message.role === "assistant" ? "justify-start" : "justify-end"}`}>
+                <div
+                  className={`max-w-[88%] rounded-2xl border px-4 py-3 shadow-sm ${
+                    message.role === "assistant"
+                      ? "border-slate-200 bg-white text-slate-900 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-50"
+                      : "border-blue-600 bg-blue-600 text-white"
+                  }`}
+                >
+                  <div className="mb-2 flex items-center gap-2 text-xs font-medium opacity-80">
+                    {message.role === "assistant" ? <Bot className="h-4 w-4" /> : <User className="h-4 w-4" />}
+                    <span>{message.role === "assistant" ? "智水先知助手" : "您"}</span>
                   </div>
-                ))}
 
-                <div ref={messagesEndRef} />
+                  {message.attachments && message.attachments.length > 0 ? (
+                    <div className="mb-3 space-y-2">
+                      {message.attachments.map((attachment) => (
+                        <div
+                          key={attachment.id}
+                          className={`rounded-xl border px-3 py-2 ${
+                            message.role === "assistant"
+                              ? "border-slate-200 bg-slate-50 dark:border-slate-800 dark:bg-slate-900"
+                              : "border-blue-300/40 bg-blue-500/30"
+                          }`}
+                        >
+                          <div className="flex items-center gap-2 text-xs">
+                            {attachment.kind === "image" ? <FileImage className="h-4 w-4" /> : <FileText className="h-4 w-4" />}
+                            <span className="truncate">{attachment.name}</span>
+                          </div>
+
+                          {attachment.kind === "image" && attachment.previewUrl ? (
+                            <img src={attachment.previewUrl} alt={attachment.name} className="mt-2 max-h-40 rounded-lg object-cover" />
+                          ) : null}
+                        </div>
+                      ))}
+                    </div>
+                  ) : null}
+
+                  {message.role === "assistant" ? (
+                    <MarkdownContent content={message.content} />
+                  ) : (
+                    <p className="text-sm whitespace-pre-wrap leading-6">{message.content}</p>
+                  )}
+                </div>
               </div>
-            </ScrollArea>
-          </CardContent>
+            ))}
 
-          <CardFooter className="flex flex-col gap-4 p-4">
+            <div ref={messagesEndRef} />
+          </div>
+        </ScrollArea>
+      </CardContent>
+
+      <CardFooter className="flex flex-col gap-4 p-4">
+        {showSuggestions && (
+          <div className="flex items-start justify-between gap-4">
             <div className="flex flex-wrap gap-2">
               {SUGGESTED_QUESTIONS.map((question) => (
                 <Button
@@ -587,73 +593,85 @@ export default function AIAssistantPanel({ onClose, className }: AIAssistantPane
                 </Button>
               ))}
             </div>
+            <Button
+            variant="ghost"  // 使用透明背景变体（如果是 shadcn/ui）
+            size="sm"
+            className="h-8 w-8 shrink-0 rounded-full p-0 text-gray-500 hover:text-gray-900"
+            onClick={() => setShowSuggestions(false)} // 点击隐藏
+            aria-label="关闭建议"
+          >
+            {/* 使用图标库的 X，或者直接写 "✕" */}
+            <X className="h-4 w-4" /> 
+          </Button>
+          </div>
+        )}
 
-            <div className="w-full rounded-2xl border border-border bg-white p-3 shadow-sm dark:bg-slate-950">
-              <Textarea
-                value={input}
-                onChange={(event) => setInput(event.target.value)}
-                onKeyDown={(event) => {
-                  if (event.key === "Enter" && !event.shiftKey) {
-                    event.preventDefault()
-                    handleSendMessage()
-                  }
-                }}
-                placeholder="请输入您的问题，或上传图片/文件后直接发送..."
-                className="min-h-[96px] resize-none border-0 px-0 py-0 shadow-none focus-visible:ring-0"
-                disabled={isLoading}
+        <div className="w-full rounded-2xl border border-border bg-white p-3 shadow-sm dark:bg-slate-950">
+          <Textarea
+            value={input}
+            onChange={(event) => setInput(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === "Enter" && !event.shiftKey) {
+                event.preventDefault()
+                handleSendMessage()
+              }
+            }}
+            placeholder="请输入您的问题，或上传图片/文件后直接发送..."
+            className="min-h-[96px] resize-none border-0 px-0 py-0 shadow-none focus-visible:ring-0"
+            disabled={isLoading}
+          />
+
+          {pendingAttachments.length > 0 ? (
+            <div className="mt-3 flex flex-wrap gap-2">
+              {pendingAttachments.map((attachment) => (
+                <div
+                  key={attachment.id}
+                  className="flex max-w-full items-center gap-2 rounded-full border border-border bg-muted px-3 py-1.5 text-xs"
+                >
+                  {attachment.kind === "image" ? <FileImage className="h-3.5 w-3.5" /> : <FileText className="h-3.5 w-3.5" />}
+                  <span className="max-w-[180px] truncate">{attachment.name}</span>
+                  <button
+                    type="button"
+                    className="text-muted-foreground transition hover:text-foreground"
+                    onClick={() => removePendingAttachment(attachment.id)}
+                  >
+                    <X className="h-3.5 w-3.5" />
+                    <span className="sr-only">移除附件</span>
+                  </button>
+                </div>
+              ))}
+            </div>
+          ) : null}
+
+          <div className="mt-3 flex items-center justify-between gap-3 max-md:flex-col max-md:items-stretch">
+            <div className="flex items-center gap-2 max-md:flex-wrap">
+              <input
+                ref={fileInputRef}
+                type="file"
+                multiple
+                className="hidden"
+                accept="image/*,.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.md,.csv,.html,.json"
+                onChange={handleFileSelect}
               />
 
-              {pendingAttachments.length > 0 ? (
-                <div className="mt-3 flex flex-wrap gap-2">
-                  {pendingAttachments.map((attachment) => (
-                    <div
-                      key={attachment.id}
-                      className="flex max-w-full items-center gap-2 rounded-full border border-border bg-muted px-3 py-1.5 text-xs"
-                    >
-                      {attachment.kind === "image" ? <FileImage className="h-3.5 w-3.5" /> : <FileText className="h-3.5 w-3.5" />}
-                      <span className="max-w-[180px] truncate">{attachment.name}</span>
-                      <button
-                        type="button"
-                        className="text-muted-foreground transition hover:text-foreground"
-                        onClick={() => removePendingAttachment(attachment.id)}
-                      >
-                        <X className="h-3.5 w-3.5" />
-                        <span className="sr-only">移除附件</span>
-                      </button>
-                    </div>
-                  ))}
-                </div>
-              ) : null}
+              <Button type="button" variant="outline" size="sm" onClick={() => fileInputRef.current?.click()} disabled={isLoading}>
+                <Paperclip className="mr-2 h-4 w-4" />
+                上传附件
+              </Button>
 
-              <div className="mt-3 flex items-center justify-between gap-3 max-md:flex-col max-md:items-stretch">
-                <div className="flex items-center gap-2 max-md:flex-wrap">
-                  <input
-                    ref={fileInputRef}
-                    type="file"
-                    multiple
-                    className="hidden"
-                    accept="image/*,.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.md,.csv,.html,.json"
-                    onChange={handleFileSelect}
-                  />
-
-                  <Button type="button" variant="outline" size="sm" onClick={() => fileInputRef.current?.click()} disabled={isLoading}>
-                    <Paperclip className="mr-2 h-4 w-4" />
-                    上传附件
-                  </Button>
-
-                  <span className="text-xs text-muted-foreground">支持图片与常见办公文档，单个文件不超过 20MB</span>
-                </div>
-
-                <Button type="button" onClick={() => handleSendMessage()} disabled={isLoading || (!input.trim() && pendingAttachments.length === 0)}>
-                  {isLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Send className="mr-2 h-4 w-4" />}
-                  发送
-                </Button>
-              </div>
-
-              {composerError ? <p className="mt-2 text-xs text-red-500">{composerError}</p> : null}
+              <span className="text-xs text-muted-foreground">支持图片与常见办公文档，单个文件不超过 20MB</span>
             </div>
-          </CardFooter>
-        </TabsContent>
+
+            <Button type="button" onClick={() => handleSendMessage()} disabled={isLoading || (!input.trim() && pendingAttachments.length === 0)}>
+              {isLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Send className="mr-2 h-4 w-4" />}
+              发送
+            </Button>
+          </div>
+
+          {composerError ? <p className="mt-2 text-xs text-red-500">{composerError}</p> : null}
+        </div>
+      </CardFooter>
+    </TabsContent>
 
         <TabsContent value="help" className="mt-0 flex-1 overflow-auto">
           <CardContent className="space-y-4 p-4 text-sm text-muted-foreground">
