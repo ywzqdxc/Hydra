@@ -231,6 +231,86 @@ function parseSSEData(block: string) {
   return dataLines.length > 0 ? dataLines.join("\n") : null
 }
 
+function buildMockAssistantReply(params: {
+  message: string
+  files: File[]
+  attachments: AttachmentPayload[]
+  textFileSummaries: string[]
+}) {
+  const prompt = params.message || "请帮我分析上传内容。"
+  const imageCount =
+    params.files.filter((file) => file.type.startsWith("image/")).length +
+    params.attachments.filter((attachment) => attachment.kind === "image").length
+  const documentNames = [
+    ...params.files.filter((file) => !file.type.startsWith("image/")).map((file) => file.name),
+    ...params.attachments.filter((attachment) => attachment.kind !== "image").map((attachment) => attachment.name),
+  ]
+  const textExcerpt = params.textFileSummaries
+    .map((item) => item.replace(/^Attachment\s+"[^"]+"\s+content:\n?/i, "").trim())
+    .filter(Boolean)
+    .join("\n\n")
+    .slice(0, 500)
+
+  const sections = [
+    "## 本地演示模式",
+    "当前环境未配置 `BIGMODEL_API_KEY`，所以这里返回的是本地模拟的流式回复，用于保证成员拉代码后可以直接体验 AI 助手界面、上传图片和 Markdown 展示流程。",
+    "## 已接收内容",
+    `- 用户问题：${prompt}`,
+    `- 图片数量：${imageCount}`,
+    `- 文档数量：${documentNames.length}`,
+    documentNames.length > 0 ? `- 文档名称：${documentNames.join("、")}` : "- 文档名称：无",
+    imageCount > 0
+      ? "- 图片说明：当前为本地 mock 模式，已确认图片上传链路正常，但未调用真实多模态识别。"
+      : "- 图片说明：未检测到图片附件。",
+    "## 建议",
+    "- 如果只是联调前端页面，现在可以继续验证窗口缩放、流式输出、Markdown 渲染和附件展示。",
+    "- 如果需要真实 AI 识图与文档分析，请在服务器或本地 `.env.local` 中配置 `BIGMODEL_API_KEY`。",
+  ]
+
+  if (textExcerpt) {
+    sections.push("## 文本摘录")
+    sections.push(textExcerpt)
+  }
+
+  return sections.join("\n\n")
+}
+
+function createMockStreamingResponse(content: string) {
+  const encoder = new TextEncoder()
+
+  return new Response(
+    new ReadableStream({
+      async start(controller) {
+        const chunks = content.match(/.{1,24}/gs) || [content]
+
+        for (const chunk of chunks) {
+          controller.enqueue(encoder.encode(encodeSSE("token", { content: chunk })))
+          await new Promise((resolve) => setTimeout(resolve, 18))
+        }
+
+        controller.enqueue(
+          encoder.encode(
+            encodeSSE("done", {
+              content,
+              reasoning: "当前为无密钥本地 mock 模式，未调用真实模型。",
+              finishReason: "mock",
+            })
+          )
+        )
+        controller.close()
+      },
+    }),
+    {
+      headers: {
+        "Content-Type": "text/event-stream; charset=utf-8",
+        "Cache-Control": "no-cache, no-transform",
+        Connection: "keep-alive",
+        "X-Accel-Buffering": "no",
+      },
+    }
+  )
+}
+
 function createStreamingResponse(upstream: Response) {
   const encoder = new TextEncoder()
   const decoder = new TextDecoder()
@@ -357,10 +437,6 @@ function createStreamingResponse(upstream: Response) {
 
 export async function POST(request: Request) {
   try {
-    if (!API_KEY) {
-      throw new Error("BIGMODEL_API_KEY is not configured")
-    }
-
     const { message, history, files, attachments = [] } = await parseRequest(request)
 
     if (!message && files.length === 0 && attachments.length === 0) {
@@ -369,6 +445,22 @@ export async function POST(request: Request) {
 
     const fileAttachmentPayload = await buildAttachmentContent(files)
     const uploadedAttachmentPayload = buildUploadedAttachmentContent(attachments)
+    const textFileSummaries = [
+      ...fileAttachmentPayload.textFileSummaries,
+      ...uploadedAttachmentPayload.textFileSummaries,
+    ]
+
+    if (!API_KEY) {
+      return createMockStreamingResponse(
+        buildMockAssistantReply({
+          message,
+          files,
+          attachments,
+          textFileSummaries,
+        })
+      )
+    }
+
     const userContent: BigModelContentItem[] = [
       ...fileAttachmentPayload.content,
       ...uploadedAttachmentPayload.content,
