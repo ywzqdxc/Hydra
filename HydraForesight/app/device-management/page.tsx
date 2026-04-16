@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useRef } from "react"
 import { Header } from "@/components/header"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
@@ -38,6 +38,8 @@ import {
   Trash2,
   Edit,
   Eye,
+  RefreshCw, // 新增：用于重试按钮的图标
+  VideoOff,  // 新增：用于视频断开的图标
 } from "lucide-react"
 import {
   createDevice,
@@ -47,6 +49,150 @@ import {
   getDeviceDetail,
   type Device as BackendDevice,
 } from "@/lib/api/device"
+
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080/api/device"
+
+// ==========================================
+// 新增：专门处理 MJPEG 流的视频组件
+// 解决了：组件卸载后继续下载资源的问题、画面定格死锁的问题
+// ==========================================
+const LiveVideoStream = ({ 
+  deviceId, 
+  timestamp, 
+  onError 
+}: { 
+  deviceId: number; 
+  timestamp: number; 
+  onError: () => void 
+}) => {
+  const [frameUrl, setFrameUrl] = useState<string | null>(null)
+  // 使用 ref 避免 onError 变化导致 effect 频繁重启
+  const onErrorRef = useRef(onError)
+
+  useEffect(() => {
+    onErrorRef.current = onError
+  }, [onError])
+
+  useEffect(() => {
+    const abortController = new AbortController()
+    let timeoutId: NodeJS.Timeout
+    let objectUrl: string | null = null
+
+    const loadStream = async () => {
+      try {
+        const response = await fetch(`${API_BASE_URL}/${deviceId}/live-image?t=${timestamp}`, {
+          signal: abortController.signal, // 绑定 abort 信号
+        })
+
+        if (!response.ok || response.status === 503) {
+          onErrorRef.current()
+          return
+        }
+
+        const reader = response.body?.getReader()
+        if (!reader) {
+          onErrorRef.current()
+          return
+        }
+
+        let buffer = new Uint8Array(0)
+
+        // 看门狗定时器：如果长时间收不到流数据包，主动判定为掉线
+        const resetWatchdog = () => {
+          clearTimeout(timeoutId)
+          timeoutId = setTimeout(() => {
+            // 超过 4 秒没有接收到任何画面数据，认为连接断开/死锁
+            abortController.abort()
+            onErrorRef.current()
+          }, 4000)
+        }
+
+        resetWatchdog()
+
+        while (true) {
+          const { done, value } = await reader.read()
+
+          if (done) {
+            // 后端主动关闭连接（如后端 Python/Java 端超时 break 循环）
+            onErrorRef.current()
+            break
+          }
+
+          // 只要收到新的 chunk 数据，就重置看门狗
+          resetWatchdog()
+
+          if (value) {
+            // 将新收到的二进制流拼接到 buffer 中
+            const newBuffer = new Uint8Array(buffer.length + value.length)
+            newBuffer.set(buffer)
+            newBuffer.set(value, buffer.length)
+            buffer = newBuffer
+
+            // 防止 buffer 因为解析失败出现无限增长导致内存泄漏（限制最大为2MB）
+            if (buffer.length > 2 * 1024 * 1024) {
+              buffer = new Uint8Array(0)
+              continue
+            }
+
+            // 寻找 JPEG 的开始符 (FF D8) 和结束符 (FF D9)
+            let start = -1
+            let end = -1
+
+            for (let i = 0; i < buffer.length - 1; i++) {
+              if (start === -1 && buffer[i] === 0xff && buffer[i + 1] === 0xd8) {
+                start = i
+              }
+              if (start !== -1 && buffer[i] === 0xff && buffer[i + 1] === 0xd9) {
+                end = i + 2
+                break
+              }
+            }
+
+            // 如果在一个 chunk 里找到了完整的一帧 JPEG，就提取出来展示
+            if (start !== -1 && end !== -1 && end > start) {
+              const frameData = buffer.slice(start, end)
+              const blob = new Blob([frameData], { type: "image/jpeg" })
+
+              if (objectUrl) {
+                URL.revokeObjectURL(objectUrl) // 释放上一帧的内存
+              }
+              objectUrl = URL.createObjectURL(blob)
+              setFrameUrl(objectUrl)
+
+              // 保留未处理的尾部数据给下一帧
+              buffer = buffer.slice(end)
+            }
+          }
+        }
+      } catch (err: any) {
+        if (err.name !== "AbortError") {
+          onErrorRef.current()
+        }
+      }
+    }
+
+    loadStream()
+
+    return () => {
+      // ！！！关键点 1：组件卸载（如关闭对话框）时，强制中止 HTTP 请求，绝不浪费后端资源
+      abortController.abort()
+      clearTimeout(timeoutId)
+      if (objectUrl) {
+        URL.revokeObjectURL(objectUrl)
+      }
+    }
+  }, [deviceId, timestamp])
+
+  if (!frameUrl) {
+    return (
+      <div className="flex items-center justify-center w-full h-full text-gray-400 text-sm">
+        正在拉取监控视频流...
+      </div>
+    )
+  }
+
+  return <img src={frameUrl} alt="实时监控画面" className="w-full h-full object-contain" />
+}
 
 export default function DeviceManagementPage() {
   const [allDevices, setAllDevices] = useState<BackendDevice[]>([])
@@ -62,6 +208,9 @@ export default function DeviceManagementPage() {
   const [selectedDevice, setSelectedDevice] = useState<BackendDevice | null>(null)
   const [showAddSuccess, setShowAddSuccess] = useState(false)
   const [isSubmitting, setIsSubmitting] = useState(false)
+  // 新增：用于控制视频流的错误状态和强制刷新的时间戳
+  const [videoError, setVideoError] = useState(false)
+  const [videoTimestamp, setVideoTimestamp] = useState(Date.now())
 
   const [newDevice, setNewDevice] = useState({
     deviceId: "",
@@ -242,12 +391,23 @@ export default function DeviceManagementPage() {
       const response = await getDeviceDetail(device.id)
       if (response.data) {
         setSelectedDevice(response.data)
+        // 新增：打开对话框时，重置视频错误状态并更新时间戳强制拉取新流
+        if (response.data.deviceType === 5) {
+          setVideoError(false)
+          setVideoTimestamp(Date.now())
+        }
         setIsViewDialogOpen(true)
       }
     } catch (err) {
       console.error("Failed to fetch device detail:", err)
       setError("获取设备详情失败")
     }
+  }
+
+  // 重连视频流的函数
+  const handleRetryVideo = () => {
+    setVideoError(false)
+    setVideoTimestamp(Date.now()) // 更新时间戳，打破浏览器图片缓存机制，重新发请求
   }
 
   const handleEditDevice = async (device: BackendDevice) => {
@@ -746,7 +906,17 @@ export default function DeviceManagementPage() {
         </div>
       </main>
 
-      <Dialog open={isViewDialogOpen} onOpenChange={setIsViewDialogOpen}>
+      <Dialog 
+        open={isViewDialogOpen} 
+        onOpenChange={(open) => {
+          setIsViewDialogOpen(open)
+          // 如果关闭对话框，可以顺便清空状态，LiveVideoStream 组件会自动卸载中止请求
+          if (!open) {
+            setTimeout(() => setSelectedDevice(null), 200) 
+          }
+        }}
+      >
+
         <DialogContent className="max-w-2xl">
           <DialogHeader>
             <DialogTitle>设备详细信息</DialogTitle>
@@ -805,6 +975,40 @@ export default function DeviceManagementPage() {
                   <p className="text-sm mt-1">{selectedDevice.remark}</p>
                 </div>
               )}
+              {/* === 视频监控画面区域 === */}
+              {selectedDevice.deviceType === 5 && (
+                <div className="mt-4 border-t pt-4">
+                  <Label className="mb-2 block">实时视频监控画面</Label>
+                  
+                  <div className="relative w-full aspect-video bg-black rounded-md overflow-hidden flex items-center justify-center border border-gray-200">
+                    {!videoError ? (
+                      /* 使用我们刚才封装的组件，它会自动管理流断开和异常重连 */
+                      <LiveVideoStream 
+                        deviceId={selectedDevice.id} 
+                        timestamp={videoTimestamp} 
+                        onError={() => setVideoError(true)} 
+                      />
+                    ) : (
+                      <div className="flex flex-col items-center justify-center space-y-4">
+                        <div className="flex items-center text-red-400">
+                          <VideoOff className="h-6 w-6 mr-2" />
+                          <span className="text-sm font-medium">画面已断开或网络异常</span>
+                        </div>
+                        <Button 
+                          variant="outline" 
+                          size="sm"
+                          className="bg-transparent border-gray-600 text-gray-300 hover:text-white hover:bg-gray-800"
+                          onClick={handleRetryVideo}
+                        >
+                          <RefreshCw className="mr-2 h-4 w-4" />
+                          重新连接
+                        </Button>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+              {/* === 视频监控画面区域结束 === */}
             </div>
           )}
         </DialogContent>
