@@ -47,10 +47,10 @@ import {
   deleteDevice,
   updateDevice,
   getDeviceDetail,
+  fetchDeviceLiveStream,
   type Device as BackendDevice,
 } from "@/lib/api/device"
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080/api/device"
 
 // ==========================================
 // 新增：专门处理 MJPEG 流的视频组件
@@ -80,9 +80,11 @@ const LiveVideoStream = ({
 
     const loadStream = async () => {
       try {
-        const response = await fetch(`${API_BASE_URL}/${deviceId}/live-image?t=${timestamp}`, {
-          signal: abortController.signal, // 绑定 abort 信号
-        })
+        const response = await fetchDeviceLiveStream(
+          deviceId, 
+          timestamp, 
+          abortController.signal
+        )
 
         if (!response.ok || response.status === 503) {
           onErrorRef.current()

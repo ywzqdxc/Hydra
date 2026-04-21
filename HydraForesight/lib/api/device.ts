@@ -3,6 +3,8 @@
  */
 import { apiClient, type ApiResponse, type PageResult } from "./request"
 
+import { API_BASE_URL, TOKEN_KEY } from "./config"
+
 export interface Device {
   id: number
   deviceId: string
@@ -132,4 +134,33 @@ export async function deleteDevice(id: number): Promise<ApiResponse<void>> {
  */
 export async function updateDeviceStatus(id: number, status: number): Promise<ApiResponse<void>> {
   return apiClient.put<void>(`/device/${id}/status/${status}`)
+}
+
+/**
+ * 获取监控视频流 (由于是二进制流，不能使用默认拦截器里的 .json() 解析，因此单独封装原生 fetch)
+ */
+export async function fetchDeviceLiveStream(
+  deviceId: number, 
+  timestamp: number, 
+  signal: AbortSignal
+): Promise<Response> {
+  const headers: HeadersInit = {}
+  
+  // 如果你的接口需要鉴权，和 request.ts 保持一致带上 token
+  if (typeof window !== "undefined") {
+    const token = localStorage.getItem(TOKEN_KEY)
+    if (token) {
+      headers["Authorization"] = `Bearer ${token}`
+    }
+  }
+
+  // 拼接请求地址，注意和你的后端接口路径保持一致
+  // 你的 request.ts 里普通请求是 `/device/${id}`，所以这里拼接 `/device/${deviceId}/live-image`
+  const url = `${API_BASE_URL}/device/${deviceId}/live-image?t=${timestamp}`
+
+  return fetch(url, {
+    method: "GET",
+    headers,
+    signal, // 绑定中断信号
+  })
 }
