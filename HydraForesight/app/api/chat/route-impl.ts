@@ -126,7 +126,7 @@ async function buildAttachmentContent(files: File[]) {
   return { content, textFileSummaries }
 }
 
-function buildUploadedAttachmentContent(attachments: AttachmentPayload[]) {
+async function buildUploadedAttachmentContent(attachments: AttachmentPayload[]) {
   const content: BigModelContentItem[] = []
   const textFileSummaries: string[] = []
 
@@ -140,12 +140,47 @@ function buildUploadedAttachmentContent(attachments: AttachmentPayload[]) {
     }
 
     if (attachment.kind === "image") {
-      content.push({
-        type: "image_url",
-        image_url: {
-          url: attachment.url,
-        },
-      })
+      // 检查是否是本地URL（如 http://127.0.0.1 或 http://localhost）
+      const isLocalUrl = /^(http:\/\/127\.0\.0\.1|http:\/\/localhost)/.test(attachment.url)
+      
+      if (isLocalUrl) {
+        // 对于本地URL，下载图片并转换为data URL
+        try {
+          const response = await fetch(attachment.url)
+          if (response.ok) {
+            const blob = await response.blob()
+            const arrayBuffer = await blob.arrayBuffer()
+            const base64 = Buffer.from(arrayBuffer).toString("base64")
+            const dataUrl = `data:${blob.type};base64,${base64}`
+            
+            content.push({
+              type: "image_url",
+              image_url: {
+                url: dataUrl,
+              },
+            })
+          } else {
+            // 下载失败，添加文本提示
+            content.push({
+              type: "text",
+              text: `[图片: ${attachment.name}] （无法加载图片）`,
+            })
+          }
+        } catch (error) {
+          // 出错时添加文本提示
+          content.push({
+            type: "text",
+            text: `[图片: ${attachment.name}] （图片处理失败）`,
+          })
+        }
+      } else {
+        content.push({
+          type: "image_url",
+          image_url: {
+            url: attachment.url,
+          },
+        })
+      }
       continue
     }
 
@@ -444,7 +479,7 @@ export async function POST(request: Request) {
     }
 
     const fileAttachmentPayload = await buildAttachmentContent(files)
-    const uploadedAttachmentPayload = buildUploadedAttachmentContent(attachments)
+    const uploadedAttachmentPayload = await buildUploadedAttachmentContent(attachments)
     const textFileSummaries = [
       ...fileAttachmentPayload.textFileSummaries,
       ...uploadedAttachmentPayload.textFileSummaries,

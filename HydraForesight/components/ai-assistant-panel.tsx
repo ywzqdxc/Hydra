@@ -130,17 +130,24 @@ async function buildAttachmentPayload(attachments: PendingAttachment[]): Promise
         payload.textContent = (await attachment.file.text()).slice(0, 20000)
       }
 
-      if (isLocalPreview()) {
+      // 对于图片，总是上传到服务器获取可访问的 URL
+      if (attachment.kind === "image") {
+        const formData = new FormData()
+        formData.append("file", attachment.file)
+        formData.append("subDir", "ai-assistant")
+
+        const uploaded = await request.upload<{ url: string }>("/file/upload", formData)
+        payload.url = uploaded.url
+      } else if (isLocalPreview()) {
         payload.url = await fileToDataUrl(attachment.file)
-        return payload
+      } else {
+        const formData = new FormData()
+        formData.append("file", attachment.file)
+        formData.append("subDir", "ai-assistant")
+
+        const uploaded = await request.upload<{ url: string }>("/file/upload", formData)
+        payload.url = uploaded.url
       }
-
-      const formData = new FormData()
-      formData.append("file", attachment.file)
-      formData.append("subDir", "ai-assistant")
-
-      const uploaded = await request.upload<{ url: string }>("/file/upload", formData)
-      payload.url = uploaded.url
 
       return payload
     })
