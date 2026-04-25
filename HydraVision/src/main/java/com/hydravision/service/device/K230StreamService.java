@@ -1,12 +1,18 @@
 package com.hydravision.service.device;
 
 import jakarta.annotation.PostConstruct;
+import jakarta.annotation.PreDestroy;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
 import java.io.DataInputStream;
+import java.io.EOFException;
+import java.io.IOException;
 import java.net.ServerSocket;
 import java.net.Socket;
+import java.net.SocketTimeoutException;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 
 /**
  * K230 视频流接收服务
@@ -16,68 +22,103 @@ import java.net.Socket;
 public class K230StreamService {
 
     private static final int SOCKET_PORT = 10000;
+    private static final int SO_TIMEOUT_MS = 10000; // 设置 10 秒超时时间
     
-    // volatile 保证多线程可见性，等同于 Python 的 global latest_frame
     private volatile byte[] latestFrame = null; 
-    
-    // 等同于 Python 的 threading.Condition()
     private final Object frameLock = new Object();
+
+    // 线程池用于处理具体的 Client 读取任务
+    private final ExecutorService clientExecutor = Executors.newCachedThreadPool();
+    private ServerSocket serverSocket;
+    private Thread serverThread;
+    private volatile boolean isRunning = true;
 
     @PostConstruct
     public void init() {
-        // 启动后台守护线程监听 Socket
-        Thread serverThread = new Thread(this::startSocketServer);
+        serverThread = new Thread(this::startSocketServer);
         serverThread.setDaemon(true);
-        serverThread.setName("K230-Socket-Server");
+        serverThread.setName("K230-Accept-Thread");
         serverThread.start();
     }
 
+    @PreDestroy
+    public void destroy() {
+        isRunning = false;
+        try {
+            if (serverSocket != null && !serverSocket.isClosed()) {
+                serverSocket.close();
+            }
+            clientExecutor.shutdownNow();
+        } catch (IOException e) {
+            log.error("关闭 Socket Server 异常", e);
+        }
+    }
+
     private void startSocketServer() {
-        try (ServerSocket serverSocket = new ServerSocket(SOCKET_PORT)) {
+        try {
+            serverSocket = new ServerSocket(SOCKET_PORT);
             log.info("[*] 后台 Socket 服务启动，监听 {} 等待 K230 连接...", SOCKET_PORT);
 
-            while (true) {
-                try {
-                    Socket clientSocket = serverSocket.accept();
-                    log.info("[+] 硬件已连接! 地址: {}", clientSocket.getRemoteSocketAddress());
-
-                    // 使用 DataInputStream 方便读取 4字节整型 (默认大端，与 Python struct.unpack('>I') 一致)
-                    DataInputStream dis = new DataInputStream(clientSocket.getInputStream());
-
-                    while (true) {
-                        // 1. 接收 4 字节数据头
-                        int dataLen = dis.readInt();
-                        if (dataLen <= 0) break;
-
-                        // 2. 接收完整 JPEG 图像数据
-                        byte[] imgData = new byte[dataLen];
-                        dis.readFully(imgData); // 等同于 Python 的 recvall
-
-                        // 3. 将新帧存入全局变量，并唤醒所有等待的 Web 线程
-                        latestFrame = imgData;
-                        synchronized (frameLock) {
-                            frameLock.notifyAll();
-                        }
-                    }
-                } catch (Exception e) {
-                    log.warn("[-] K230 连接断开，等待重新连接... 原因: {}", e.getMessage());
-                    latestFrame = null;
-                }
+            while (isRunning) {
+                // 主线程只负责 accept，不负责 read
+                Socket clientSocket = serverSocket.accept();
+                log.info("[+] 硬件已连接! 地址: {}", clientSocket.getRemoteSocketAddress());
+                
+                // 将具体的读取任务扔进线程池处理
+                clientExecutor.submit(() -> handleClient(clientSocket));
             }
         } catch (Exception e) {
-            log.error("Socket Server 启动失败", e);
+            if (isRunning) {
+                log.error("Socket Server 监听异常退", e);
+            }
         }
     }
 
     /**
-     * 阻塞等待下一帧图像数据
-     * @param timeoutMs 超时时间(毫秒)
-     * @return 图像字节数组，超时或无数据返回 null
+     * 处理单个 K230 客户端的连接
      */
+    private void handleClient(Socket clientSocket) {
+        // 1. 使用 try-with-resources 自动管理资源，保证 Socket 绝对会被关闭 (Java 9+ 语法)
+        try (clientSocket;
+             DataInputStream dis = new DataInputStream(clientSocket.getInputStream())) {
+            
+            // 2. 设置读取超时时间：如果设备 10 秒没有发任何数据，直接断开，防止半开连接死锁
+            clientSocket.setSoTimeout(SO_TIMEOUT_MS);
+
+            while (isRunning) {
+                // 3. 读取 4 字节长度
+                int dataLen = dis.readInt();
+                if (dataLen <= 0 || dataLen > 10 * 1024 * 1024) { // 加一个防御性限制，比如单帧最大 10MB
+                    log.warn("[-] 接收到异常的数据长度: {}，断开连接", dataLen);
+                    break;
+                }
+
+                // 4. 接收完整 JPEG 图像数据
+                byte[] imgData = new byte[dataLen];
+                dis.readFully(imgData);
+
+                // 5. 更新帧并唤醒 Web 线程
+                latestFrame = imgData;
+                synchronized (frameLock) {
+                    frameLock.notifyAll();
+                }
+            }
+        } catch (EOFException e) {
+            log.info("[-] K230 正常断开连接 (EOF)");
+        } catch (SocketTimeoutException e) {
+            log.warn("[-] K230 连接超时 ({}ms 未收到数据)，强制断开", SO_TIMEOUT_MS);
+        } catch (Exception e) {
+            log.warn("[-] K230 连接异常断开: {}", e.getMessage());
+        } finally {
+            // 清理状态
+            latestFrame = null; 
+            log.info("[*] 释放当前连接资源完成。");
+        }
+    }
+
     public byte[] waitForNextFrame(long timeoutMs) {
         synchronized (frameLock) {
             try {
-                // 阻塞等待被唤醒（有新图片），或超时
                 frameLock.wait(timeoutMs); 
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
@@ -87,9 +128,6 @@ public class K230StreamService {
         return latestFrame;
     }
 
-    /**
-     * 获取当前最新帧（不等待）
-     */
     public byte[] getLatestFrame() {
         return latestFrame;
     }
