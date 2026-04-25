@@ -4,6 +4,7 @@
 import { apiClient, type ApiResponse, type PageResult } from "./request"
 
 function isLocalPreview() {
+  return false
   if (typeof window === "undefined") return false
   return window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1"
 }
