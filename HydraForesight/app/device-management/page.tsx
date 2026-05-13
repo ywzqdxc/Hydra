@@ -978,7 +978,7 @@ export default function DeviceManagementPage() {
                 </div>
               )}
               {/* === 视频监控画面区域 === */}
-              {selectedDevice.deviceType === 5 && (
+              {selectedDevice.deviceType === 5 && selectedDevice.deviceId !== 'UAV-001' && (
                 <div className="mt-4 border-t pt-4">
                   <Label className="mb-2 block">实时视频监控画面</Label>
                   
@@ -1011,6 +1011,24 @@ export default function DeviceManagementPage() {
                 </div>
               )}
               {/* === 视频监控画面区域结束 === */}
+
+              {/* === 无人机监控画面区域 === */}
+              {selectedDevice.deviceId === 'UAV-001' && (
+                <div className="mt-4 border-t pt-4">
+                  <Label className="mb-2 block">无人机实时监控画面</Label>
+                  <div className="relative w-full aspect-video bg-black rounded-md overflow-hidden flex items-center justify-center border border-gray-200">
+                    <video
+                      src="uav/uav-video.mp4"
+                      className="w-full h-full object-cover"
+                      autoPlay
+                      muted
+                      loop
+                      playsInline
+                    />
+                  </div>
+                </div>
+              )}
+              {/* === 无人机监控画面区域结束 === */}
             </div>
           )}
         </DialogContent>
